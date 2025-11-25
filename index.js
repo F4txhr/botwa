@@ -9,16 +9,19 @@ const qrcode = require("qrcode-terminal");
 const axios = require("axios");
 const { spawn } = require("child_process");
 
-async function getYtDlpDirectUrl(url) {
+// Download video ke buffer via yt-dlp (tidak lewat HTTP client sendiri)
+async function getYtDlpVideoBuffer(url) {
   return new Promise((resolve, reject) => {
-    const args = ["-f", "bv*+ba/best/best", "-g", url];
+    // -f best: kualitas terbaik
+    // -o -  : output ke stdout (binary)
+    const args = ["-f", "best", "-o", "-", url];
     const cp = spawn("yt-dlp", args, { stdio: ["ignore", "pipe", "pipe"] });
 
-    let out = "";
+    const chunks = [];
     let err = "";
 
     cp.stdout.on("data", (d) => {
-      out += d.toString();
+      chunks.push(d);
     });
     cp.stderr.on("data", (d) => {
       err += d.toString();
@@ -26,14 +29,10 @@ async function getYtDlpDirectUrl(url) {
     cp.on("error", (e) => reject(e));
     cp.on("close", (code) => {
       if (code === 0) {
-        const lines = out
-          .split("\n")
-          .map((s) => s.trim())
-          .filter(Boolean);
-        if (!lines.length) {
-          reject(new Error("yt-dlp tidak mengembalikan URL"));
+        if (!chunks.length) {
+          reject(new Error("yt-dlp tidak mengembalikan data video"));
         } else {
-          resolve(lines[0]);
+          resolve(Buffer.concat(chunks));
         }
       } else {
         reject(new Error("yt-dlp exit code " + code + " stderr: " + err));
@@ -124,16 +123,8 @@ async function startBot() {
 
       if (isYoutube || isTiktok || isInstagram) {
         try {
-          // Gunakan yt-dlp langsung (tidak pakai HTTP server)
-          const directUrl = await getYtDlpDirectUrl(url);
-
-          // Karena beberapa CDN (misal TikTok) menolak direct fetch dari WhatsApp,
-          // kita ambil dulu videonya ke buffer lalu kirim sebagai file.
-          const videoResp = await axios.get(directUrl, {
-            responseType: "arraybuffer",
-          });
-
-          const videoBuffer = Buffer.from(videoResp.data);
+          // Gunakan yt-dlp untuk langsung mengeluarkan video ke stdout lalu kirim buffer-nya ke WhatsApp
+          const videoBuffer = await getYtDlpVideoBuffer(url);
 
           await sock.sendMessage(
             from,
@@ -144,7 +135,7 @@ async function startBot() {
             { quoted: msg }
           );
         } catch (e) {
-          console.error("Gagal ambil URL langsung via yt-dlp:", e);
+          console.error("Gagal ambil video via yt-dlp:", e);
           await sock.sendMessage(
             from,
             {
