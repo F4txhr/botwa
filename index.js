@@ -4,12 +4,36 @@ const {
   fetchLatestBaileysVersion,
   DisconnectReason,
   downloadContentFromMessage,
-} = require("@whiskeysockets/baileys");
-const { spawn } = require("child_process");
+} = require("@whisk</old_code><new_code>const { spawn } = require("child_process");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
-const sharp = require("sharp");
+
+// Load sharp native; fallback ke WASM di lingkungan seperti Termux
+let sharp;
+try {
+  sharp = require("sharp");
+} catch (e1) {
+  try {
+    sharp = require("@img/sharp-wasm32");
+    console.log("Menggunakan sharp WASM (@img/sharp-wasm32)");
+  } catch (e2) {
+    console.warn(
+      "sharp tidak tersedia (native maupun WASM). Fitur konversi stiker dinonaktifkan.",
+    );
+    sharp = null;
+  }
+}awn } = require("child_process");
+const fs = require("fs");
+const os = require("os");
+const path = require("path");
+
+// Load sharp native; fallback ke WASM di lingkungan seperti Termux
+let sharp;
+try {
+  sharp = require("sharp");
+} catch (e1) {
+
 
 // Cek ketersediaan yt-dlp di sistem (untuk memberi pesan yang jelas jika belum terpasang)
 async function ensureYtDlpAvailable() {
@@ -59,6 +83,7 @@ async function getYtDlpVideoFile(url) {
 
 // Konversi gambar ke webp 512px agar tampil sebagai sticker, menghindari sticker blank
 async function imageToWebpSticker(buffer) {
+  if (!sharp) throw new Error("sharp tidak tersedia");
   // WhatsApp sticker optimal: 512x512, webp.
   return sharp(buffer)
     .resize({ width: 512, height: 512, fit: "inside" })

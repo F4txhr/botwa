@@ -20,6 +20,19 @@ WhatsApp bot sederhana berbasis Baileys.
 sudo apt-get update && sudo apt-get install -y yt-dlp ffmpeg
 ```
 
+### Instal di Termux (Android)
+- Pastikan Node 18+.
+- Install yt-dlp dan ffmpeg:
+```
+pkg update && pkg install -y yt-dlp ffmpeg
+```
+- Jika sticker error karena sharp native tidak tersedia, modul akan otomatis mencoba WASM.
+  Jika perlu, pasang paket WASM secara manual:
+```
+npm install --cpu=wasm32 sharp
+npm install @img/sharp-wasm32
+```
+
 ## Setup & Menjalankan
 ```
 npm install
@@ -29,7 +42,7 @@ npm run start
 
 ## Catatan
 - Video diupayakan dikirim sebagai MP4 agar playable di WhatsApp.
-- Sticker dikonversi ke webp 512px agar tidak blank.
+- Sticker dikonversi ke webp 512px; di Termux akan coba menggunakan WASM jika native tidak tersedia.
 - Folder sesi tersimpan di `./session`.
 
 ## Skrip Pengembangan
