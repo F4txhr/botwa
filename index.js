@@ -7,6 +7,40 @@ const {
 } = require("@whiskeysockets/baileys");
 const qrcode = require("qrcode-terminal");
 const axios = require("axios");
+const { spawn } = require("child_process");
+
+async function getYtDlpDirectUrl(url) {
+  return new Promise((resolve, reject) =&gt; {
+    const args = ["-f", "bv*+ba/best/best", "-g", url];
+    const cp = spawn("yt-dlp", args, { stdio: ["ignore", "pipe", "pipe"] });
+
+    let out = "";
+    let err = "";
+
+    cp.stdout.on("data", (d) =&gt; {
+      out += d.toString();
+    });
+    cp.stderr.on("data", (d) =&gt; {
+      err += d.toString();
+    });
+    cp.on("error", (e) =&gt; reject(e));
+    cp.on("close", (code) =&gt; {
+      if (code === 0) {
+        const lines = out
+          .split("\n")
+          .map((s) =&gt; s.trim())
+          .filter(Boolean);
+        if (!lines.length) {
+          reject(new Error("yt-dlp tidak mengembalikan URL"));
+        } else {
+          resolve(lines[0]);
+        }
+      } else {
+        reject(new Error("yt-dlp exit code " + code + " stderr: " + err));
+      }
+    });
+  });
+}
 
 async function startBot() {
   const { state, saveCreds } = await useMultiFileAuthState("./session");
@@ -83,54 +117,33 @@ async function startBot() {
       const url = urlMatch[0];
       const lower = url.toLowerCase();
 
-      // Deteksi platform (YouTube / TikTok / IG / lainnya) -> diarahkan ke server downloader
+      // Deteksi platform (YouTube / TikTok / IG / lainnya)
       const isYoutube = /youtu\.be|youtube\.com/.test(lower);
       const isTiktok = /tiktok\.com/.test(lower);
       const isInstagram = /instagram\.com|ig\.me/.test(lower);
 
       if (isYoutube || isTiktok || isInstagram) {
         try {
-          // BASE URL server.js milikmu
-          const DOWNLOADER_BASE_URL =
-            process.env.DOWNLOADER_BASE_URL || "http://127.0.0.1:3000";
+          // Gunakan yt-dlp langsung (tidak pakai HTTP server)
+          const directUrl = await getYtDlpDirectUrl(url);
 
-          // Panggil /api/auto untuk ambil metadata + path download
-          const { data } = await axios.post(
-            `${DOWNLOADER_BASE_URL}/api/auto`,
-            { url },
-            { headers: { "Content-Type": "application/json" } }
-          );
-
-          if (!data.ok || !data.download) {
-            await sock.sendMessage(
-              from,
-              {
-                text:
-                  "Downloader API tidak mengembalikan data yang valid.\n" +
-                  (data.error ? `Detail: ${data.error}` : ""),
-              },
-              { quoted: msg }
-            );
-          } else {
-            const downloadPath = data.download; // contoh: /api/download?url=...
-            const videoUrl = downloadPath.startsWith("http")
-              ? downloadPath
-              : `${DOWNLOADER_BASE_URL}${downloadPath}`;
-
-            await sock.sendMessage(
-              from,
-              {
-                video: { url: videoUrl },
-                caption: data.title || "Nih videonya 👍",
-              },
-              { quoted: msg }
-            );
-          }
-        } catch (e) {
-          console.error("Gagal download dari server.js downloader:", e);
           await sock.sendMessage(
             from,
-            { text: "Gagal download video dari URL tersebut (API error)." },
+            {
+              video: { url: directUrl },
+              caption: "Nih videonya 👍",
+            },
+            { quoted: msg }
+          );
+        } catch (e) {
+          console.error("Gagal ambil URL langsung via yt-dlp:", e);
+          await sock.sendMessage(
+            from,
+            {
+              text:
+                "Gagal download video dari URL tersebut.\n" +
+                "Pastikan yt-dlp terinstall dan URL valid.",
+            },
             { quoted: msg }
           );
         }
