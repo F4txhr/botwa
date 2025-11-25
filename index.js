@@ -5,58 +5,88 @@ const {
   DisconnectReason,
   downloadContentFromMessage,
 } = require("@whiskeysockets/baileys");
-const qrcode = require("qrcode-terminal");
-const axios = require("axios");
 const { spawn } = require("child_process");
+const fs = require("fs");
+const os = require("os");
+const path = require("path");
+const sharp = require("sharp");
 
-// Download video ke buffer via yt-dlp (tidak lewat HTTP client sendiri)
-async function getYtDlpVideoBuffer(url) {
-  return new Promise((resolve, reject) => {
-    // -o - : output ke stdout (biarkan yt-dlp memilih format terbaik)
-    const args = ["-o", "-", url];
-    const cp = spawn("yt-dlp", args, { stdio: ["ignore", "pipe", "pipe"] });
+// Cek ketersediaan yt-dlp di sistem (untuk memberi pesan yang jelas jika belum terpasang)
+async function ensureYtDlpAvailable() {
+  return new Promise((resolve) => {
+    const cp = spawn("yt-dlp", ["--version"], { stdio: ["ignore", "pipe", "pipe"] });
+    cp.on("error", () => resolve(false));
+    cp.on("close", (code) => resolve(code === 0));
+  });
+}
 
-    const chunks = [];
+// Download video via yt-dlp ke file sementara dengan preferensi MP4 agar playable di WhatsApp
+async function getYtDlpVideoFile(url) {
+  const tmpPath = path.join(
+    os.tmpdir(),
+    `yt-${Date.now()}-${Math.random().toString(36).slice(2)}.mp4`
+  );
+
+  // Prefer MP4 progressive; fallback gabungan stream (butuh ffmpeg) atau best.
+  const args = [
+    "-f",
+    "b[ext=mp4]/bv*[ext=mp4]+ba[ext=m4a]/best",
+    "--no-playlist",
+    "-o",
+    tmpPath,
+    url,
+  ];
+
+  await new Promise((resolve, reject) => {
+    const cp = spawn("yt-dlp", args, { stdio: ["ignore", "ignore", "pipe"] });
     let err = "";
-
-    cp.stdout.on("data", (d) => {
-      chunks.push(d);
-    });
-    cp.stderr.on("data", (d) => {
-      err += d.toString();
-    });
+    cp.stderr.on("data", (d) => (err += d.toString()));
     cp.on("error", (e) => reject(e));
     cp.on("close", (code) => {
-      if (code === 0) {
-        if (!chunks.length) {
-          reject(new Error("yt-dlp tidak mengembalikan data video"));
-        } else {
-          resolve(Buffer.concat(chunks));
-        }
-      } else {
-        reject(new Error("yt-dlp exit code " + code + " stderr: " + err));
-      }
+      if (code === 0) return resolve();
+      reject(new Error(`yt-dlp exit code ${code}: ${err}`));
     });
   });
+
+  // Verifikasi file terunduh
+  const stat = fs.statSync(tmpPath);
+  if (!stat.size) {
+    throw new Error("File video kosong dari yt-dlp");
+  }
+
+  return { path: tmpPath, mimetype: "video/mp4" };
+}
+
+// Konversi gambar ke webp 512px agar tampil sebagai sticker, menghindari sticker blank
+async function imageToWebpSticker(buffer) {
+  // WhatsApp sticker optimal: 512x512, webp.
+  return sharp(buffer)
+    .resize({ width: 512, height: 512, fit: "inside" })
+    .webp({ quality: 100, lossless: true })
+    .toBuffer();
 }
 
 async function startBot() {
   const { state, saveCreds } = await useMultiFileAuthState("./session");
   const { version } = await fetchLatestBaileysVersion();
 
+  const ytOk = await ensureYtDlpAvailable();
+  if (!ytOk) {
+    console.warn(
+      "Peringatan: yt-dlp tidak terdeteksi. Fitur download YouTube/TikTok/IG mungkin gagal."
+    );
+  }
+
   const sock = makeWASocket({
     version,
-    printQRInTerminal: true,
+    printQRInTerminal: true, // Pakai bawaan Baileys (hindari QR dobel)
     auth: state,
   });
 
   sock.ev.on("creds.update", saveCreds);
 
   sock.ev.on("connection.update", (update) => {
-    const { connection, lastDisconnect, qr } = update;
-    if (qr) {
-      qrcode.generate(qr, { small: true });
-    }
+    const { connection, lastDisconnect } = update;
     if (connection === "close") {
       const shouldReconnect =
         lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
@@ -109,7 +139,7 @@ async function startBot() {
       await sock.sendMessage(from, { text: template }, { quoted: msg });
     }
 
-    // Deteksi URL =&gt; downloader
+    // Deteksi URL => downloader
     const urlMatch = text.match(/https?:\/\/\S+/i);
     if (urlMatch) {
       const url = urlMatch[0];
@@ -122,13 +152,22 @@ async function startBot() {
 
       if (isYoutube || isTiktok || isInstagram) {
         try {
-          // Gunakan yt-dlp untuk langsung mengeluarkan video ke stdout lalu kirim buffer-nya ke WhatsApp
-          const videoBuffer = await getYtDlpVideoBuffer(url);
+          if (!ytOk) throw new Error("yt-dlp tidak tersedia");
+
+          const { path: filePath, mimetype } = await getYtDlpVideoFile(url);
+          let videoBuffer;
+          try {
+            videoBuffer = fs.readFileSync(filePath);
+          } finally {
+            // Hapus file sementara setelah dibaca
+            fs.unlink(filePath, () => {});
+          }
 
           await sock.sendMessage(
             from,
             {
               video: videoBuffer,
+              mimetype: mimetype,
               caption: "Nih videonya 👍",
             },
             { quoted: msg }
@@ -139,8 +178,8 @@ async function startBot() {
             from,
             {
               text:
-                "Gagal download video dari URL tersebut.\n" +
-                "Pastikan yt-dlp terinstall dan URL valid.",
+                "Gagal download atau kirim video dari URL tersebut.\n" +
+                "Pastikan yt-dlp (dan ffmpeg untuk beberapa video) terinstall, serta URL valid.",
             },
             { quoted: msg }
           );
@@ -172,7 +211,7 @@ async function startBot() {
               {
                 text:
                   "Terdeteksi URL, tapi hanya mendukung:\n" +
-                  "- YouTube/TikTok/Instagram via API eksternal, atau\n" +
+                  "- YouTube/TikTok/Instagram via yt-dlp, atau\n" +
                   "- direct link media (jpg/png/mp4/mp3).",
               },
               { quoted: msg }
@@ -189,7 +228,7 @@ async function startBot() {
       }
     }
 
-    // Deteksi pesan gambar dengan caption "stiker" =&gt; convert ke sticker
+    // Deteksi pesan gambar dengan caption "stiker" => convert ke sticker
     const imageMessage = msg.message.imageMessage;
     if (imageMessage) {
       const caption = (imageMessage.caption || "").trim().toLowerCase();
@@ -202,9 +241,10 @@ async function startBot() {
           }
           const buffer = Buffer.concat(chunks);
 
+          const webp = await imageToWebpSticker(buffer);
           await sock.sendMessage(
             from,
-            { sticker: buffer },
+            { sticker: webp },
             { quoted: msg }
           );
         } catch (e) {
@@ -239,9 +279,10 @@ async function startBot() {
             }
             const buffer = Buffer.concat(chunks);
 
+            const webp = await imageToWebpSticker(buffer);
             await sock.sendMessage(
               from,
-              { sticker: buffer },
+              { sticker: webp },
               { quoted: msg }
             );
           } catch (e) {
