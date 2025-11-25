@@ -83,50 +83,51 @@ async function startBot() {
       const url = urlMatch[0];
       const lower = url.toLowerCase();
 
-      // Deteksi platform (YouTube / TikTok / IG)
+      // Deteksi platform (YouTube / TikTok / IG / lainnya) -> diarahkan ke server downloader
       const isYoutube = /youtu\.be|youtube\.com/.test(lower);
       const isTiktok = /tiktok\.com/.test(lower);
       const isInstagram = /instagram\.com|ig\.me/.test(lower);
 
       if (isYoutube || isTiktok || isInstagram) {
         try {
-          // Ganti BASE_URL ini dengan API downloader milikmu
-          const BASE_URL = "https://your-downloader-api.com/download";
-          const platform = isYoutube ? "youtube" : isTiktok ? "tiktok" : "instagram";
+          // BASE URL server.js milikmu
+          const DOWNLOADER_BASE_URL =
+            process.env.DOWNLOADER_BASE_URL || "http://127.0.0.1:3000";
 
-          const { data } = await axios.get(BASE_URL, {
-            params: {
-              url,
-              platform,
-            },
-          });
+          // Panggil /api/auto untuk ambil metadata + path download
+          const { data } = await axios.post(
+            `${DOWNLOADER_BASE_URL}/api/auto`,
+            { url },
+            { headers: { "Content-Type": "application/json" } }
+          );
 
-          // Contoh normalisasi response (silakan sesuaikan dengan format API yang kamu pakai)
-          const result = data.result || data.data || data;
-          const videoUrl =
-            result.video ||
-            result.url ||
-            result.download_url ||
-            (Array.isArray(result) ? result[0]?.url : null);
-
-          if (!videoUrl) {
+          if (!data.ok || !data.download) {
             await sock.sendMessage(
               from,
-              { text: "API downloader tidak mengembalikan link video yang valid." },
+              {
+                text:
+                  "Downloader API tidak mengembalikan data yang valid.\n" +
+                  (data.error ? `Detail: ${data.error}` : ""),
+              },
               { quoted: msg }
             );
           } else {
+            const downloadPath = data.download; // contoh: /api/download?url=...
+            const videoUrl = downloadPath.startsWith("http")
+              ? downloadPath
+              : `${DOWNLOADER_BASE_URL}${downloadPath}`;
+
             await sock.sendMessage(
               from,
               {
                 video: { url: videoUrl },
-                caption: result.title || "Nih videonya 👍",
+                caption: data.title || "Nih videonya 👍",
               },
               { quoted: msg }
             );
           }
         } catch (e) {
-          console.error("Gagal download dari API eksternal:", e);
+          console.error("Gagal download dari server.js downloader:", e);
           await sock.sendMessage(
             from,
             { text: "Gagal download video dari URL tersebut (API error)." },
