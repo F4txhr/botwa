@@ -26,12 +26,7 @@ sudo apt-get update && sudo apt-get install -y yt-dlp ffmpeg
 ```
 pkg update && pkg install -y yt-dlp ffmpeg
 ```
-- Jika sticker error karena sharp native tidak tersedia, modul akan otomatis mencoba WASM.
-  Jika perlu, pasang paket WASM secara manual:
-```
-npm install --cpu=wasm32 sharp
-npm install @img/sharp-wasm32
-```
+- Di Termux, sharp native sering tidak tersedia. Kode akan otomatis fallback ke ffmpeg untuk konversi sticker, jadi Anda tidak perlu memasang paket WASM.
 
 ## Setup & Menjalankan
 ```
