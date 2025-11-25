@@ -10,25 +10,25 @@ const axios = require("axios");
 const { spawn } = require("child_process");
 
 async function getYtDlpDirectUrl(url) {
-  return new Promise((resolve, reject) =&gt; {
+  return new Promise((resolve, reject) => {
     const args = ["-f", "bv*+ba/best/best", "-g", url];
     const cp = spawn("yt-dlp", args, { stdio: ["ignore", "pipe", "pipe"] });
 
     let out = "";
     let err = "";
 
-    cp.stdout.on("data", (d) =&gt; {
+    cp.stdout.on("data", (d) => {
       out += d.toString();
     });
-    cp.stderr.on("data", (d) =&gt; {
+    cp.stderr.on("data", (d) => {
       err += d.toString();
     });
-    cp.on("error", (e) =&gt; reject(e));
-    cp.on("close", (code) =&gt; {
+    cp.on("error", (e) => reject(e));
+    cp.on("close", (code) => {
       if (code === 0) {
         const lines = out
           .split("\n")
-          .map((s) =&gt; s.trim())
+          .map((s) => s.trim())
           .filter(Boolean);
         if (!lines.length) {
           reject(new Error("yt-dlp tidak mengembalikan URL"));
