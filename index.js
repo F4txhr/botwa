@@ -77,53 +77,107 @@ async function startBot() {
       await sock.sendMessage(from, { text: template }, { quoted: msg });
     }
 
-    // Deteksi URL => downloader sederhana (direct media: jpg/png/mp4/mp3)
+    // Deteksi URL =&gt; downloader
     const urlMatch = text.match(/https?:\/\/\S+/i);
     if (urlMatch) {
       const url = urlMatch[0];
-      try {
-        // Cek ekstensi file
-        const lower = url.toLowerCase();
-        if (lower.endsWith(".jpg") || lower.endsWith(".jpeg") || lower.endsWith(".png")) {
-          await sock.sendMessage(
-            from,
-            { image: { url }, caption: "Nih fotonya 👍" },
-            { quoted: msg }
-          );
-        } else if (lower.endsWith(".mp4") || lower.endsWith(".mov") || lower.endsWith(".mkv")) {
-          await sock.sendMessage(
-            from,
-            { video: { url }, caption: "Nih videonya 👍" },
-            { quoted: msg }
-          );
-        } else if (lower.endsWith(".mp3") || lower.endsWith(".wav") || lower.endsWith(".ogg")) {
-          await sock.sendMessage(
-            from,
-            { audio: { url }, mimetype: "audio/mpeg" },
-            { quoted: msg }
-          );
-        } else {
-          await sock.sendMessage(
-            from,
-            {
-              text:
-                "Terdeteksi URL, tapi hanya mendukung direct link media (jpg/png/mp4/mp3).\n" +
-                "Coba kirim link file langsung ya.",
+      const lower = url.toLowerCase();
+
+      // Deteksi platform (YouTube / TikTok / IG)
+      const isYoutube = /youtu\.be|youtube\.com/.test(lower);
+      const isTiktok = /tiktok\.com/.test(lower);
+      const isInstagram = /instagram\.com|ig\.me/.test(lower);
+
+      if (isYoutube || isTiktok || isInstagram) {
+        try {
+          // Ganti BASE_URL ini dengan API downloader milikmu
+          const BASE_URL = "https://your-downloader-api.com/download";
+          const platform = isYoutube ? "youtube" : isTiktok ? "tiktok" : "instagram";
+
+          const { data } = await axios.get(BASE_URL, {
+            params: {
+              url,
+              platform,
             },
+          });
+
+          // Contoh normalisasi response (silakan sesuaikan dengan format API yang kamu pakai)
+          const result = data.result || data.data || data;
+          const videoUrl =
+            result.video ||
+            result.url ||
+            result.download_url ||
+            (Array.isArray(result) ? result[0]?.url : null);
+
+          if (!videoUrl) {
+            await sock.sendMessage(
+              from,
+              { text: "API downloader tidak mengembalikan link video yang valid." },
+              { quoted: msg }
+            );
+          } else {
+            await sock.sendMessage(
+              from,
+              {
+                video: { url: videoUrl },
+                caption: result.title || "Nih videonya 👍",
+              },
+              { quoted: msg }
+            );
+          }
+        } catch (e) {
+          console.error("Gagal download dari API eksternal:", e);
+          await sock.sendMessage(
+            from,
+            { text: "Gagal download video dari URL tersebut (API error)." },
             { quoted: msg }
           );
         }
-      } catch (e) {
-        console.error("Gagal kirim media dari URL:", e);
-        await sock.sendMessage(
-          from,
-          { text: "Gagal mengambil media dari URL tersebut." },
-          { quoted: msg }
-        );
+      } else {
+        // Downloader sederhana (direct media: jpg/png/mp4/mp3)
+        try {
+          if (lower.endsWith(".jpg") || lower.endsWith(".jpeg") || lower.endsWith(".png")) {
+            await sock.sendMessage(
+              from,
+              { image: { url }, caption: "Nih fotonya 👍" },
+              { quoted: msg }
+            );
+          } else if (lower.endsWith(".mp4") || lower.endsWith(".mov") || lower.endsWith(".mkv")) {
+            await sock.sendMessage(
+              from,
+              { video: { url }, caption: "Nih videonya 👍" },
+              { quoted: msg }
+            );
+          } else if (lower.endsWith(".mp3") || lower.endsWith(".wav") || lower.endsWith(".ogg")) {
+            await sock.sendMessage(
+              from,
+              { audio: { url }, mimetype: "audio/mpeg" },
+              { quoted: msg }
+            );
+          } else {
+            await sock.sendMessage(
+              from,
+              {
+                text:
+                  "Terdeteksi URL, tapi hanya mendukung:\n" +
+                  "- YouTube/TikTok/Instagram via API eksternal, atau\n" +
+                  "- direct link media (jpg/png/mp4/mp3).",
+              },
+              { quoted: msg }
+            );
+          }
+        } catch (e) {
+          console.error("Gagal kirim media dari URL:", e);
+          await sock.sendMessage(
+            from,
+            { text: "Gagal mengambil media dari URL tersebut." },
+            { quoted: msg }
+          );
+        }
       }
     }
 
-    // Deteksi pesan gambar dengan caption "stiker" => convert ke sticker
+    // Deteksi pesan gambar dengan caption "stiker" =&gt; convert ke sticker
     const imageMessage = msg.message.imageMessage;
     if (imageMessage) {
       const caption = (imageMessage.caption || "").trim().toLowerCase();
@@ -148,6 +202,44 @@ async function startBot() {
             { text: "Gagal mengonversi gambar ke stiker." },
             { quoted: msg }
           );
+        }
+      }
+    }
+
+    // Support gambar yang dikirim lalu diminta stiker lewat reply
+    // Cara pakai:
+    // 1) Kirim gambar
+    // 2) Reply gambar itu dengan teks: "stiker" / "sticker"
+    if (!msg.message.imageMessage) {
+      const justText = text.trim().toLowerCase();
+      if (justText === "stiker" || justText === "sticker") {
+        const quoted =
+          msg.message.extendedTextMessage?.contextInfo?.quotedMessage ||
+          msg.message.ephemeralMessage?.message?.extendedTextMessage?.contextInfo?.quotedMessage;
+
+        const quotedImage = quoted?.imageMessage;
+        if (quotedImage) {
+          try {
+            const stream = await downloadContentFromMessage(quotedImage, "image");
+            const chunks = [];
+            for await (const chunk of stream) {
+              chunks.push(chunk);
+            }
+            const buffer = Buffer.concat(chunks);
+
+            await sock.sendMessage(
+              from,
+              { sticker: buffer },
+              { quoted: msg }
+            );
+          } catch (e) {
+            console.error("Gagal mengonversi gambar (reply) ke stiker:", e);
+            await sock.sendMessage(
+              from,
+              { text: "Gagal mengonversi gambar (reply) ke stiker." },
+              { quoted: msg }
+            );
+          }
         }
       }
     }
