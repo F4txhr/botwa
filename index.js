@@ -3,9 +3,42 @@ const {
   useMultiFileAuthState,
   fetchLatestBaileysVersion,
   DisconnectReason,
+  downloadContentFromMessage,
 } = require("@whiskeysockets/baileys");
 const qrcode = require("qrcode-terminal");
 const axios = require("axios");
+const { spawn } = require("child_process");
+
+// Download video ke buffer via yt-dlp (tidak lewat HTTP client sendiri)
+async function getYtDlpVideoBuffer(url) {
+  return new Promise((resolve, reject) => {
+    // -o - : output ke stdout (biarkan yt-dlp memilih format terbaik)
+    const args = ["-o", "-", url];
+    const cp = spawn("yt-dlp", args, { stdio: ["ignore", "pipe", "pipe"] });
+
+    const chunks = [];
+    let err = "";
+
+    cp.stdout.on("data", (d) => {
+      chunks.push(d);
+    });
+    cp.stderr.on("data", (d) => {
+      err += d.toString();
+    });
+    cp.on("error", (e) => reject(e));
+    cp.on("close", (code) => {
+      if (code === 0) {
+        if (!chunks.length) {
+          reject(new Error("yt-dlp tidak mengembalikan data video"));
+        } else {
+          resolve(Buffer.concat(chunks));
+        }
+      } else {
+        reject(new Error("yt-dlp exit code " + code + " stderr: " + err));
+      }
+    });
+  });
+}
 
 async function startBot() {
   const { state, saveCreds } = await useMultiFileAuthState("./session");
@@ -76,9 +109,152 @@ async function startBot() {
       await sock.sendMessage(from, { text: template }, { quoted: msg });
     }
 
-    // TODO:
-    // - deteksi URL => panggil downloader
-    // - deteksi pesan gambar dengan caption "stiker" => convert ke sticker
+    // Deteksi URL =&gt; downloader
+    const urlMatch = text.match(/https?:\/\/\S+/i);
+    if (urlMatch) {
+      const url = urlMatch[0];
+      const lower = url.toLowerCase();
+
+      // Deteksi platform (YouTube / TikTok / IG / lainnya)
+      const isYoutube = /youtu\.be|youtube\.com/.test(lower);
+      const isTiktok = /tiktok\.com/.test(lower);
+      const isInstagram = /instagram\.com|ig\.me/.test(lower);
+
+      if (isYoutube || isTiktok || isInstagram) {
+        try {
+          // Gunakan yt-dlp untuk langsung mengeluarkan video ke stdout lalu kirim buffer-nya ke WhatsApp
+          const videoBuffer = await getYtDlpVideoBuffer(url);
+
+          await sock.sendMessage(
+            from,
+            {
+              video: videoBuffer,
+              caption: "Nih videonya 👍",
+            },
+            { quoted: msg }
+          );
+        } catch (e) {
+          console.error("Gagal ambil video via yt-dlp:", e);
+          await sock.sendMessage(
+            from,
+            {
+              text:
+                "Gagal download video dari URL tersebut.\n" +
+                "Pastikan yt-dlp terinstall dan URL valid.",
+            },
+            { quoted: msg }
+          );
+        }
+      } else {
+        // Downloader sederhana (direct media: jpg/png/mp4/mp3)
+        try {
+          if (lower.endsWith(".jpg") || lower.endsWith(".jpeg") || lower.endsWith(".png")) {
+            await sock.sendMessage(
+              from,
+              { image: { url }, caption: "Nih fotonya 👍" },
+              { quoted: msg }
+            );
+          } else if (lower.endsWith(".mp4") || lower.endsWith(".mov") || lower.endsWith(".mkv")) {
+            await sock.sendMessage(
+              from,
+              { video: { url }, caption: "Nih videonya 👍" },
+              { quoted: msg }
+            );
+          } else if (lower.endsWith(".mp3") || lower.endsWith(".wav") || lower.endsWith(".ogg")) {
+            await sock.sendMessage(
+              from,
+              { audio: { url }, mimetype: "audio/mpeg" },
+              { quoted: msg }
+            );
+          } else {
+            await sock.sendMessage(
+              from,
+              {
+                text:
+                  "Terdeteksi URL, tapi hanya mendukung:\n" +
+                  "- YouTube/TikTok/Instagram via API eksternal, atau\n" +
+                  "- direct link media (jpg/png/mp4/mp3).",
+              },
+              { quoted: msg }
+            );
+          }
+        } catch (e) {
+          console.error("Gagal kirim media dari URL:", e);
+          await sock.sendMessage(
+            from,
+            { text: "Gagal mengambil media dari URL tersebut." },
+            { quoted: msg }
+          );
+        }
+      }
+    }
+
+    // Deteksi pesan gambar dengan caption "stiker" =&gt; convert ke sticker
+    const imageMessage = msg.message.imageMessage;
+    if (imageMessage) {
+      const caption = (imageMessage.caption || "").trim().toLowerCase();
+      if (caption === "stiker" || caption === "sticker") {
+        try {
+          const stream = await downloadContentFromMessage(imageMessage, "image");
+          const chunks = [];
+          for await (const chunk of stream) {
+            chunks.push(chunk);
+          }
+          const buffer = Buffer.concat(chunks);
+
+          await sock.sendMessage(
+            from,
+            { sticker: buffer },
+            { quoted: msg }
+          );
+        } catch (e) {
+          console.error("Gagal mengonversi gambar ke stiker:", e);
+          await sock.sendMessage(
+            from,
+            { text: "Gagal mengonversi gambar ke stiker." },
+            { quoted: msg }
+          );
+        }
+      }
+    }
+
+    // Support gambar yang dikirim lalu diminta stiker lewat reply
+    // Cara pakai:
+    // 1) Kirim gambar
+    // 2) Reply gambar itu dengan teks: "stiker" / "sticker"
+    if (!msg.message.imageMessage) {
+      const justText = text.trim().toLowerCase();
+      if (justText === "stiker" || justText === "sticker") {
+        const quoted =
+          msg.message.extendedTextMessage?.contextInfo?.quotedMessage ||
+          msg.message.ephemeralMessage?.message?.extendedTextMessage?.contextInfo?.quotedMessage;
+
+        const quotedImage = quoted?.imageMessage;
+        if (quotedImage) {
+          try {
+            const stream = await downloadContentFromMessage(quotedImage, "image");
+            const chunks = [];
+            for await (const chunk of stream) {
+              chunks.push(chunk);
+            }
+            const buffer = Buffer.concat(chunks);
+
+            await sock.sendMessage(
+              from,
+              { sticker: buffer },
+              { quoted: msg }
+            );
+          } catch (e) {
+            console.error("Gagal mengonversi gambar (reply) ke stiker:", e);
+            await sock.sendMessage(
+              from,
+              { text: "Gagal mengonversi gambar (reply) ke stiker." },
+              { quoted: msg }
+            );
+          }
+        }
+      }
+    }
   });
 }
 
