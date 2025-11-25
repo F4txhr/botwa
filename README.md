@@ -12,21 +12,19 @@ WhatsApp bot sederhana berbasis Baileys dengan fitur downloader, sticker, transl
   - Direct link media (jpg/png/mp4/mp3/wav/ogg)
   - Batas ukuran download global (default 1 GB, bisa diubah dengan `/setlimit`)
 - Sticker:
-  - Gambar → sticker (caption `stiker` / `sticker` atau reply `stiker`)
-  - Teks → sticker (`/stiker <teks>`, fallback ffmpeg di Termux)
-  - Sticker → gambar (`/toimg` atau teks `toimg` reply ke sticker)
-  - Custom packname & author per-chat: `/stikerpack Nama|Author`
+  - Gambar → sticker (caption "stiker"/"sticker" atau reply "stiker")
+  - Teks → sticker (/stiker <teks>)
+  - Sticker → gambar (/toimg atau teks "toimg" reply ke sticker)
 - Utilitas:
-  - `/tr id-en <teks>` → translate (MyMemory)
-  - `/cuaca <kota>` → info cuaca (OpenWeather, butuh `OPENWEATHER_API_KEY`)
-  - `/short <url>` → pemendek URL (is.gd)
+  - /tr id-en <teks> → translate
+  - /short <url> → pemendek URL
 - Admin / grup:
   - `/setprefix <prefix>` → ganti prefix per chat
   - `/toggle <fitur> on|off` → (downloader, welcome, antilink, translate, weather, shorten, sticker)
   - `/status` → lihat konfigurasi chat ini
   - Welcome / goodbye otomatis di grup (jika fitur `welcome` aktif)
 - Owner-only:
-  - `/setlimit <MB>` → ubah batas ukuran download global via yt-dlp
+  - `/setlimit &lt;MB&gt;` → ubah batas ukuran download global via yt-dlp
   - `/logs` → ringkasan penggunaan command sejak bot dijalankan
 
 ## Prasyarat
@@ -64,16 +62,19 @@ Beberapa fitur memerlukan environment variable:
     - Mengizinkan perintah `/setlimit` dan `/logs`
 - `BOT_OWNER_NAME` (opsional)
   - Nama owner untuk ditampilkan di `/owner`.
-- `OPENWEATHER_API_KEY` (opsional, tapi wajib untuk fitur `/cuaca`)
-  - API key dari OpenWeather (lihat bagian berikut).
+- `BOT_OWNER_JID` (opsional tapi disarankan di multi-device)
+  - JID penuh owner (contoh: `99166583808031@lid`), supaya deteksi owner tetap akurat di akun LID/MD.onfigurasi Environment
 
-### Cara mendapatkan OPENWEATHER_API_KEY
+Beberapa fitur memerlukan environment variable:
 
-1. Buka https://openweathermap.org/api
-2. Daftar akun (gratis).
-3. Buka menu "API keys".
-4. Salin API key (string panjang).
-5. Simpan ke environment sebagai `OPENWEATHER_API_KEY`.
+- `BOT_OWNER_NUMBER` (disarankan)
+  - Nomor WhatsApp owner dalam format internasional, hanya angka.
+  - Contoh: `6281234567890`
+  - Dipakai untuk:
+    - Menentukan siapa yang dianggap Owner
+    - Mengizinkan perintah `/setlimit` dan `/logs`
+- `BOT_OWNER_NAME` (opsional)
+  - Nama owner untuk ditampilkan di `/owner`.
 
 ## Cara Menjalankan (Termux / Linux)
 
