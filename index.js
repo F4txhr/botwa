@@ -3,6 +3,7 @@ const {
   useMultiFileAuthState,
   fetchLatestBaileysVersion,
   DisconnectReason,
+  downloadContentFromMessage,
 } = require("@whiskeysockets/baileys");
 const qrcode = require("qrcode-terminal");
 const axios = require("axios");
@@ -76,9 +77,80 @@ async function startBot() {
       await sock.sendMessage(from, { text: template }, { quoted: msg });
     }
 
-    // TODO:
-    // - deteksi URL => panggil downloader
-    // - deteksi pesan gambar dengan caption "stiker" => convert ke sticker
+    // Deteksi URL => downloader sederhana (direct media: jpg/png/mp4/mp3)
+    const urlMatch = text.match(/https?:\/\/\S+/i);
+    if (urlMatch) {
+      const url = urlMatch[0];
+      try {
+        // Cek ekstensi file
+        const lower = url.toLowerCase();
+        if (lower.endsWith(".jpg") || lower.endsWith(".jpeg") || lower.endsWith(".png")) {
+          await sock.sendMessage(
+            from,
+            { image: { url }, caption: "Nih fotonya 👍" },
+            { quoted: msg }
+          );
+        } else if (lower.endsWith(".mp4") || lower.endsWith(".mov") || lower.endsWith(".mkv")) {
+          await sock.sendMessage(
+            from,
+            { video: { url }, caption: "Nih videonya 👍" },
+            { quoted: msg }
+          );
+        } else if (lower.endsWith(".mp3") || lower.endsWith(".wav") || lower.endsWith(".ogg")) {
+          await sock.sendMessage(
+            from,
+            { audio: { url }, mimetype: "audio/mpeg" },
+            { quoted: msg }
+          );
+        } else {
+          await sock.sendMessage(
+            from,
+            {
+              text:
+                "Terdeteksi URL, tapi hanya mendukung direct link media (jpg/png/mp4/mp3).\n" +
+                "Coba kirim link file langsung ya.",
+            },
+            { quoted: msg }
+          );
+        }
+      } catch (e) {
+        console.error("Gagal kirim media dari URL:", e);
+        await sock.sendMessage(
+          from,
+          { text: "Gagal mengambil media dari URL tersebut." },
+          { quoted: msg }
+        );
+      }
+    }
+
+    // Deteksi pesan gambar dengan caption "stiker" => convert ke sticker
+    const imageMessage = msg.message.imageMessage;
+    if (imageMessage) {
+      const caption = (imageMessage.caption || "").trim().toLowerCase();
+      if (caption === "stiker" || caption === "sticker") {
+        try {
+          const stream = await downloadContentFromMessage(imageMessage, "image");
+          const chunks = [];
+          for await (const chunk of stream) {
+            chunks.push(chunk);
+          }
+          const buffer = Buffer.concat(chunks);
+
+          await sock.sendMessage(
+            from,
+            { sticker: buffer },
+            { quoted: msg }
+          );
+        } catch (e) {
+          console.error("Gagal mengonversi gambar ke stiker:", e);
+          await sock.sendMessage(
+            from,
+            { text: "Gagal mengonversi gambar ke stiker." },
+            { quoted: msg }
+          );
+        }
+      }
+    }
   });
 }
 
