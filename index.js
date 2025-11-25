@@ -127,10 +127,18 @@ async function startBot() {
           // Gunakan yt-dlp langsung (tidak pakai HTTP server)
           const directUrl = await getYtDlpDirectUrl(url);
 
+          // Karena beberapa CDN (misal TikTok) menolak direct fetch dari WhatsApp,
+          // kita ambil dulu videonya ke buffer lalu kirim sebagai file.
+          const videoResp = await axios.get(directUrl, {
+            responseType: "arraybuffer",
+          });
+
+          const videoBuffer = Buffer.from(videoResp.data);
+
           await sock.sendMessage(
             from,
             {
-              video: { url: directUrl },
+              video: videoBuffer,
               caption: "Nih videonya 👍",
             },
             { quoted: msg }
