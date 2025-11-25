@@ -12,9 +12,8 @@ const { spawn } = require("child_process");
 // Download video ke buffer via yt-dlp (tidak lewat HTTP client sendiri)
 async function getYtDlpVideoBuffer(url) {
   return new Promise((resolve, reject) => {
-    // -f best: kualitas terbaik
-    // -o -  : output ke stdout (binary)
-    const args = ["-f", "best", "-o", "-", url];
+    // -o - : output ke stdout (biarkan yt-dlp memilih format terbaik)
+    const args = ["-o", "-", url];
     const cp = spawn("yt-dlp", args, { stdio: ["ignore", "pipe", "pipe"] });
 
     const chunks = [];
