@@ -4,11 +4,24 @@ WhatsApp bot sederhana berbasis Baileys.
 
 ## Fitur
 - ping → pong
-- /confess Nama|Pesan → generator teks anonim
-- Deteksi URL → downloader
-  - YouTube/TikTok/Instagram via yt-dlp (dikirim sebagai video MP4)
-  - Direct link media (jpg/png/mp4/mp3)
-- Konversi gambar → sticker (caption "stiker"/"sticker" atau reply)
+- Menu bantuan (/help atau /menu)
+- Downloader:
+  - Perintah: /ytv <url>, /yta <url YouTube>
+  - Auto deteksi URL: YouTube/TikTok/Instagram via yt-dlp (dikirim sebagai video MP4)
+  - Direct link media (jpg/png/mp4/mp3/wav/ogg)
+- Sticker:
+  - Gambar → sticker (caption "stiker"/"sticker" atau reply "stiker")
+  - Teks → sticker (/stiker <teks>)
+  - Sticker → gambar (/toimg atau teks "toimg" reply ke sticker)
+- Utilitas:
+  - /tr id-en <teks> → translate
+  - /cuaca <kota> → info cuaca (butuh OPENWEATHER_API_KEY)
+  - /short <url> → pemendek URL
+- Admin / grup:
+  - /setprefix <prefix>
+  - /toggle <fitur> on|off (downloader,welcome,antilink,translate,weather,shorten,sticker)
+  - /status
+- Welcome / goodbye otomatis di grup (jika fitur welcome aktif)
 
 ## Prasyarat
 - Node.js LTS
