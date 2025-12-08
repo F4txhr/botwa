@@ -7,8 +7,8 @@ WhatsApp bot sederhana berbasis Baileys dengan fitur downloader, sticker, transl
 - ping → pong
 - Menu bantuan: `/help` atau `/menu`
 - Downloader:
-  - Perintah: `/ytv <url>`, `/yta <url YouTube>`
-  - Auto deteksi URL: YouTube / TikTok / Instagram via yt-dlp (dikirim sebagai video MP4)
+  - Perintah: `/ytv &lt;url&gt;`, `/yta &lt;url YouTube&gt;`
+  - Auto deteksi URL: YouTube / TikTok / Instagram via library JS `btch-downloader` (dikirim sebagai video MP4)
   - Direct link media (jpg/png/mp4/mp3/wav/ogg)
   - Batas ukuran download global (default 1 GB, bisa diubah dengan `/setlimit`)
 - Sticker:
@@ -24,31 +24,31 @@ WhatsApp bot sederhana berbasis Baileys dengan fitur downloader, sticker, transl
   - `/status` → lihat konfigurasi chat ini
   - Welcome / goodbye otomatis di grup (jika fitur `welcome` aktif)
 - Owner-only:
-  - `/setlimit &lt;MB&gt;` → ubah batas ukuran download global via yt-dlp
+  - `/setlimit &lt;MB&gt;` → ubah batas ukuran download global untuk fitur downloader
   - `/logs` → ringkasan penggunaan command sejak bot dijalankan
 
 ## Prasyarat
 
 - Node.js LTS (disarankan 18+)
-- `yt-dlp` terpasang di sistem (wajib untuk downloader YouTube/TikTok/IG)
-- `ffmpeg` untuk konversi video dan sticker (wajib jika tidak menggunakan `sharp`)
+- Jalankan `npm install` untuk menginstal semua library JS yang dibutuhkan (termasuk `btch-downloader`, `sharp`, dan `wa-sticker-formatter`).
+- (Opsional) `ffmpeg` hanya sebagai fallback tambahan untuk beberapa operasi sticker jika `sharp` / `wa-sticker-formatter` tidak dapat digunakan.
 
-### Instal yt-dlp (contoh Ubuntu)
+### Instal ffmpeg (opsional, contoh Ubuntu)
 
 ```bash
-sudo apt-get update && sudo apt-get install -y yt-dlp ffmpeg
+sudo apt-get update && sudo apt-get install -y ffmpeg
 ```
 
 ### Instal di Termux (Android)
 
 - Pastikan Node 18+.
-- Install yt-dlp dan ffmpeg:
+- (Opsional) Install ffmpeg:
 
 ```bash
-pkg update && pkg install -y yt-dlp ffmpeg
+pkg update && pkg install -y ffmpeg
 ```
 
-- Di Termux, `sharp` native sering tidak tersedia. Kode akan otomatis fallback ke `ffmpeg` untuk konversi sticker dan stiker teks.
+- Di Termux, `sharp` native sering tidak tersedia. Kode akan otomatis fallback ke `ffmpeg` untuk konversi sticker dan stiker teks jika Anda memasangnya.
 
 ## Konfigurasi Environment
 
@@ -123,7 +123,7 @@ chmod +x start.sh   # sekali saja
 ## Catatan
 
 - Video diupayakan dikirim sebagai MP4 agar playable di WhatsApp.
-- Sticker dikonversi ke webp 512px; di Termux akan fallback ke `ffmpeg` jika `sharp` tidak tersedia.
+- Sticker dikonversi ke webp 512px; di Termux akan fallback ke `ffmpeg` jika `sharp` tidak tersedia (jika Anda memilih memasang ffmpeg).
 - Konfigurasi per-chat (prefix, fitur, sticker pack) tersimpan di `./session/config.json`.
 - Folder sesi Baileys tersimpan di `./session`.
 
